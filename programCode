@@ -1,0 +1,842 @@
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+#include <sstream>
+#include <ctime>
+#include <iomanip>
+#include <map>
+
+using namespace std;
+
+// Constants
+const int MAX_CATEGORIES = 5;
+const int MAX_ENTRIES = 100;
+const int MAX_DAYS = 31; // Maximum number of days in a month
+
+// Arrays and variables
+string categoryNames[MAX_CATEGORIES];
+int expenses[MAX_ENTRIES][MAX_CATEGORIES];
+int budgetLimits[MAX_CATEGORIES]; // Monthly budgets
+int expense_count = 0; // Represents the current month
+int income = 0;
+int categoryNamesPointer = 3;
+vector<string> history;
+int currentSystemMonth;
+int currentDay; // Tracks the current day of the system
+map<string, string> userCredentials; // Stores usernames and passwords
+int dailyExpenses[MAX_DAYS][MAX_CATEGORIES]; // Track expenses day by day
+string currentUsername; // Variable to keep track of the logged-in user
+
+// Function prototypes
+int getTotalExpensesByMonth(int month) ;
+void initializeUserData();
+int getTotalExpenses();
+void loadCredentials();
+void initializeArray();
+bool isrowfilled();
+bool login();
+void registerUser();
+void saveToFile();
+void saveHistory(const string &log);
+void addIncome();
+void updateIncome();
+void addExpenses();
+void setBudget();
+void monthlyBudgetSummary();
+void viewBudget();
+void viewHistory();
+void exportReport();
+void loadData();
+void initializeCategories();
+int getCurrentSystemMonth();
+string getCurrentDate();
+void checkMonthAndUpdate();
+void displayMenu();
+int getCurrentSystemDay();
+void displayarray();
+void addCategory();
+void compareMonths();
+void showDailyTrends();
+
+// Function implementations
+
+/**
+ * Initializes user-specific data structures.
+ */
+void initializeUserData() {
+    income = 0;
+    expense_count = 0;
+    history.clear();
+    categoryNamesPointer = 0; // Start with 0 categories
+    // Reset category names and budget limits
+    for (int i = 0; i < MAX_CATEGORIES; i++) {
+        categoryNames[i] = "";
+        budgetLimits[i] = 0;
+    }
+    // Initialize expenses
+    for (int i = 0; i < MAX_ENTRIES; i++) {
+        for (int j = 0; j < MAX_CATEGORIES; j++) {
+            expenses[i][j] = -1;
+        }
+    }
+    // Initialize daily expenses
+    for (int day = 0; day < MAX_DAYS; day++) {
+        for (int cat = 0; cat < MAX_CATEGORIES; cat++) {
+            dailyExpenses[day][cat] = 0;
+        }
+    }
+}
+
+/**
+ * Loads stored credentials from the credentials file.
+ */
+void loadCredentials() {
+    ifstream file("credentials.txt");
+    if (file.is_open()) {
+        string username, password;
+        while (file >> username >> password) {
+            userCredentials[username] = password;
+        }
+        file.close();
+    } else {
+        cout << "No credentials found. New users can register.\n";
+    }
+}
+
+/**
+ * Displays login system. Returns true if login is successful.
+ */
+bool login() {
+    string username, password;
+    cout << "----- Login -----\n";
+    cout << "Enter username: ";
+    cin >> username;
+    cout << "Enter password: ";
+    cin >> password;
+
+    if (userCredentials.find(username) != userCredentials.end() &&
+        userCredentials[username] == password) {
+        cout << "Login successful. Welcome, " << username << "!\n";
+        currentUsername = username; // Set the current user
+        initializeUserData();       // Reset user-specific data
+        loadData();                 // Load user-specific data
+        return true;
+    } else {
+        cout << "Invalid credentials. Please try again.\n";
+        return false;
+    }
+}
+
+/**
+ * Allows new users to register. Saves credentials to file.
+ */
+void registerUser() {
+    string username, password;
+    cout << "----- Register -----\n";
+    cout << "Enter a new username: ";
+    cin >> username;
+    if (userCredentials.find(username) != userCredentials.end()) {
+        cout << "Username already exists. Please try a different one.\n";
+        return;
+    }
+    cout << "Enter a new password: ";
+    cin >> password;
+
+    userCredentials[username] = password;
+    ofstream file("credentials.txt", ios::app);
+    if (file.is_open()) {
+        file << username << " " << password << "\n";
+        file.close();
+        cout << "Registration successful. You can now log in.\n";
+    } else {
+        cout << "Error saving credentials. Registration failed.\n";
+    }
+}
+
+/**
+ * Adds income for the user.
+ */
+void addIncome() {
+    cout << "Enter your monthly income: ";
+    cin >> income;
+    while (income < 0) {
+        cout << "Income cannot be negative. Please try again.\n";
+        cin >> income;
+    }
+    saveHistory("Income added: " + to_string(income));
+    saveToFile();
+    cout << "Income added successfully!\n";
+}
+
+/**
+ * Updates the income for the user.
+ */
+void updateIncome() {
+    int newIncome;
+    cout << "Your current income is: " << income << endl;
+    cout << "Enter your updated income (must be a positive value): ";
+    cin >> newIncome;
+    while (newIncome < 0) {
+        cout << "Income cannot be negative. Please enter again:\n";
+        cin >> newIncome;
+    }
+    saveHistory("Income updated from " + to_string(income) + " to " + to_string(newIncome));
+    income = newIncome;
+    saveToFile();
+    cout << "Income updated successfully!\n";
+}
+
+/**
+ * Adds expenses for a specific category and tracks them day by day.
+ */
+void addExpenses() {
+    if (expense_count >= MAX_ENTRIES) // Max entries reached
+    {
+        cout << "Maximum number of entries has been reached." << endl;
+        return;
+    }
+    int categoryIndex;
+    int expense;
+    cout << "Select a category to add expenses:\n";
+    for (int i = 0; i < categoryNamesPointer; i++) {
+        cout << i + 1 << ") " << categoryNames[i] << endl;
+    }
+    cin >> categoryIndex;
+    categoryIndex--; // Adjust for zero-based index
+
+    while (categoryIndex < 0 || categoryIndex >= categoryNamesPointer) {
+        cout << "Invalid category selection! Enter value again:\n";
+        cin >> categoryIndex;
+    }
+
+    cout << "Enter the amount spent in " << categoryNames[categoryIndex] << ": ";
+    cin >> expense;
+    while (expense < 0) {
+        cout << "Expense cannot be negative. Please try again.\n";
+        cin >> expense;
+    }
+
+    int day = getCurrentSystemDay(); // Get the current day
+    cout << "Today's Date: " << getCurrentSystemDay() + 1 << endl;
+
+    if (expense > budgetLimits[categoryIndex]) {
+        cout << "Alert: This expense (" << expense << ") exceeds your budget limit (" << budgetLimits[categoryIndex] << ") for " << categoryNames[categoryIndex] << ".\n";
+        char decision;
+        cout << "Do you still want to proceed? (Y/N): ";
+        cin >> decision;
+        if (decision == 'N' || decision == 'n') {
+            cout << "Expense addition cancelled.\n";
+            return;
+        }
+    }
+
+    dailyExpenses[day][categoryIndex] += expense; // Track the expense for the specific day
+    expenses[expense_count][categoryIndex] = expense;
+    if (isrowfilled())  //moving on to next row
+    {
+        expense_count += 1;
+    }
+    saveHistory("Expense added to " + categoryNames[categoryIndex] + " on day " + to_string(day + 1) + ": " + to_string(expense));
+    saveToFile();
+    cout << "Expense added successfully!\n";
+}
+
+/**
+ * Checks if the current row of expenses is filled.
+ */
+bool isrowfilled() {
+    for (int y = 0; y < categoryNamesPointer; y++) {
+        if (expenses[expense_count][y] == -1) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Calculates total expenses.
+ */
+int getTotalExpenses() {
+    int total = 0;
+    for (int i=0; i<expense_count;i++)
+    {
+     for (int j = 0; j < categoryNamesPointer; j++) 
+     {
+        total += expenses[i][j];
+     }
+    }
+    return total;
+}
+int getTotalExpensesByMonth(int month) //expenses spent in a single month
+{
+    int total = 0;
+    for (int j = 0; j < categoryNamesPointer; j++) 
+        total += expenses[month-1][j];
+    return total;
+}
+
+/**
+ * Displays spending trends day by day for the current month.
+ */
+void showDailyTrends() {
+    cout << "\n----- Daily Spending Trends -----\n";
+
+    for (int day = 0; day < MAX_DAYS; day++) {
+        double dailyTotal = 0;
+        bool hasExpenses = false; // Flag to check if there are expenses on this day
+
+        // Check if there are any expenses on this day
+        for (int category = 0; category < categoryNamesPointer; category++) {
+            if (dailyExpenses[day][category] > 0) {
+                hasExpenses = true;
+                break;
+            }
+        }
+
+        if (hasExpenses) {
+            cout << "Day " << day + 1 << ":\n";
+            for (int category = 0; category < categoryNamesPointer; category++) {
+                if (dailyExpenses[day][category] > 0) {
+                    cout << "  " << categoryNames[category] << ": " << dailyExpenses[day][category] << "\n";
+                    dailyTotal += dailyExpenses[day][category];
+                }
+            }
+            cout << "  Total: " << dailyTotal << "\n";
+            cout << "-----------------------------------\n";
+        }
+    }
+
+    saveHistory("Viewed daily spending trends.");
+}
+
+/**
+ * Compares the income and expenses of two months.
+ */
+void compareMonths() {
+    if (expense_count < 1) {
+        cout << "Not enough data to perform a comparison. At least two months of data are required.\n";
+        return;
+    }
+
+    int month1, month2;
+    cout << "Enter the first month number to compare (1 to " << expense_count + 1 << "): ";
+    cin >> month1;
+    cout << "Enter the second month number to compare (1 to " << expense_count + 1 << "): ";
+    cin >> month2;
+    while (month1 < 1 || month1 > expense_count + 1 || month2 < 1 || month2 > expense_count + 1 || month1 == month2) {
+        cout << "Invalid month numbers. Please enter valid and different month numbers.\n";
+        cout << "Enter the first month number to compare (1 to " << expense_count + 1 << "): ";
+        cin >> month1;
+        cout << "Enter the second month number to compare (1 to " << expense_count + 1 << "): ";
+        cin >> month2;
+    }
+    int totalExpensesMonth1 = 0;
+    int totalExpensesMonth2 = 0;
+    totalExpensesMonth1 = getTotalExpensesByMonth(month1);
+    totalExpensesMonth2 = getTotalExpensesByMonth(month2);
+
+    cout << "\n----- Monthly Comparison -----\n";
+    cout << "Month " << month1 << ": \n";
+    cout << "  Total Income: " << income << "\n";
+    cout << "  Total Expenses: " << totalExpensesMonth1 << "\n";
+
+    cout << "\nMonth " << month2 << ": \n";
+    cout << "  Total Income: " << income << "\n";
+    cout << "  Total Expenses: " << totalExpensesMonth2 << "\n";
+
+    if (totalExpensesMonth1 > totalExpensesMonth2) {
+        cout << "\nYou spent more in Month " << month1 << " than in Month " << month2 << ".\n";
+    } else if (totalExpensesMonth1 < totalExpensesMonth2) {
+        cout << "\nYou spent more in Month " << month2 << " than in Month " << month1 << ".\n";
+    } else {
+        cout << "\nYour spending in both months is the same.\n";
+    }
+
+    saveHistory("Compared months " + to_string(month1) + " and " + to_string(month2));
+}
+
+/**
+ * Sets a new budget limit for a specific category.
+ */
+void setBudget() {
+    int categoryIndex;
+    int newLimit;
+    cout << "Select a category to set monthly budget:\n";
+    for (int i = 0; i < categoryNamesPointer; i++) {
+        cout << i + 1 << ") " << categoryNames[i] << endl;
+    }
+    cin >> categoryIndex;
+    categoryIndex--; // Adjust for zero-based index
+
+    while (categoryIndex < 0 || categoryIndex >= categoryNamesPointer) {
+        cout << "Invalid category selection! Enter again: \n";
+        cin >> categoryIndex;
+    }
+    cout << "Enter new budget limit for " << categoryNames[categoryIndex] << ": ";
+    cin >> newLimit;
+    while (newLimit < 0) {
+        cout << "Budget cannot be negative. Please enter again:\n";
+        cin >> newLimit;
+    }
+    if (newLimit > income) 
+    {
+        cout << "Alert: Setting this budget (" << newLimit << ") exceeds your total income (" << income << ").\n";
+        char decision;
+        cout << "Do you still want to proceed? (Y/N): ";
+        cin >> decision;
+        if (decision == 'N' || decision == 'n') {
+            cout << "Budget setting cancelled.\n";
+            return;
+        }
+    }
+    budgetLimits[categoryIndex] = newLimit;
+    saveHistory("Budget for " + categoryNames[categoryIndex] + " set to " + to_string(newLimit));
+    saveToFile();
+    cout << "Budget updated successfully!\n";
+}
+
+/**
+ * Displays a summary of the monthly budget.
+ */
+void monthlyBudgetSummary() {
+    int month;
+    cout<<"for which month would you like to see a summary? (1-12): "<<endl;
+    cin>>month;
+    int totalExpenses = getTotalExpensesByMonth(month);
+    cout << "Total income: " << income << endl;
+    cout << "expenses in this month: " << totalExpenses << endl;
+    cout << "Remaining balance: " << (income - totalExpenses) << endl;
+
+    saveHistory("Monthly budget summary viewed.");
+}
+
+/**
+ * Displays the budget limits for each category.
+ */
+void viewBudget() {
+    cout << "Budget limits per category:\n";
+    for (int i = 0; i < categoryNamesPointer; i++) {
+        cout << categoryNames[i] << ": " << budgetLimits[i] << endl;
+    }
+
+    saveHistory("Viewed budget limits.");
+}
+
+/**
+ * Displays the history of changes.
+ */
+void viewHistory() {
+    cout << "History of changes:\n";
+    for (const string &log : history) {
+        cout << log << endl;
+    }
+
+    saveHistory("Viewed change history.");
+}
+
+/**
+ * Exports a detailed monthly budget report to a file.
+ */
+void exportReport() {
+    string reportFilename = currentUsername + "_budget_report.txt";
+    ofstream file(reportFilename);
+    if (file.is_open()) {
+        file << "----- Yearly Budget Report -----\n";
+        file << "Date: " << getCurrentDate() << "\n";
+        file << "Income: " << income*12 << "\n";
+        file << "Total Expenses: " << getTotalExpenses() << "\n";
+        file << "Remaining Balance: " << (income*12 - getTotalExpenses()) << "\n\n";
+        file << "Category-wise Breakdown:\n";
+        int amount = 0;
+        file << "Category Name | Total Amount Spent | Monthly Budget" << endl;
+        for (int i = 0; i < categoryNamesPointer; i++) {
+            file << categoryNames[i] << " | ";
+            amount = 0;
+            for (int j = 0; j <= expense_count; j++) {
+                if (expenses[j][i] != -1)
+                    amount += expenses[j][i];
+            }
+            file << amount << " | " << budgetLimits[i] << endl;
+        }
+
+        file.close();
+        cout << "Report exported successfully to " << reportFilename << ".\n";
+    } else {
+        cout << "Error exporting report.\n";
+    }
+}
+
+/**
+ * Loads saved data for income, expenses, budget limits, and daily expenses.
+ */
+
+void loadData() {
+    string dataFilename = currentUsername + "_budget_data.txt";
+    ifstream file(dataFilename);
+    string line; // Declare 'line' at the beginning
+
+    if (file.is_open()) {
+        // Load categoryNamesPointer
+        getline(file, line);
+        if (line.find("Category Names Pointer:") != string::npos) {
+            categoryNamesPointer = stoi(line.substr(line.find(":") + 1));
+        }
+
+        // Load category names
+        getline(file, line); // Should be "Category Names:"
+        if (line == "Category Names:") {
+            for (int i = 0; i < categoryNamesPointer; i++) {
+                getline(file, line);
+                categoryNames[i] = line;
+            }
+        }
+
+        // Load income
+        getline(file, line);
+        if (line.find("Income:") != string::npos) {
+            income = stoi(line.substr(line.find(":") + 1));
+        }
+
+        // Load expenses
+        getline(file, line); // Should be "Expenses:"
+        int i = 0;
+        while (getline(file, line) && line != "Budget Limits:") {
+            stringstream ss(line);
+            for (int j = 0; j < categoryNamesPointer; j++) {
+                ss >> expenses[i][j];
+            }
+            i++;
+        }
+        expense_count = i - 1;
+        if (expense_count < 0) expense_count = 0; // Ensure expense_count is at least 0
+
+        // Load budget limits
+        if (line == "Budget Limits:") {
+            for (int i = 0; i < categoryNamesPointer; i++) {
+                getline(file, line);
+                size_t pos = line.find(":");
+                if (pos != string::npos) {
+                    budgetLimits[i] = stoi(line.substr(pos + 1));
+                }
+            }
+        }
+
+        // Load daily expenses
+        getline(file, line); // Should be "Daily Expenses:"
+        if (line == "Daily Expenses:") {
+            for (int day = 0; day < MAX_DAYS; day++) {
+                getline(file, line);
+                stringstream ss(line);
+                for (int cat = 0; cat < categoryNamesPointer; cat++) {
+                    ss >> dailyExpenses[day][cat];
+                }
+            }
+        }
+
+        file.close();
+
+        // If no categories were loaded, initialize default categories
+        if (categoryNamesPointer == 0) {
+            initializeCategories();
+        }
+
+    } else {
+        cout << "No previous data found. Starting fresh.\n";
+        initializeCategories();
+    }
+
+    // Load history
+    string historyFilename = currentUsername + "_budget_history.txt";
+    ifstream historyFile(historyFilename);
+    if (historyFile.is_open()) {
+        while (getline(historyFile, line)) {
+            history.push_back(line);
+        }
+        historyFile.close();
+    }
+}
+
+
+/**
+ * Initializes default categories if starting fresh.
+ */
+void initializeCategories() {
+    if (categoryNamesPointer == 0) {
+        categoryNames[0] = "groceries";
+        categoryNames[1] = "shopping";
+        categoryNames[2] = "travelling";
+        categoryNamesPointer = 3;
+    }
+}
+
+
+/**
+ * Gets the current month using the system's local time.
+ */
+int getCurrentSystemMonth() {
+    time_t now = time(0);
+    tm *ltm = localtime(&now);
+    return ltm->tm_mon;
+}
+
+/**
+ * Gets the current date in DD-MM-YYYY format.
+ */
+string getCurrentDate() {
+    time_t now = time(0);
+    tm *ltm = localtime(&now);
+    stringstream ss;
+    ss << setfill('0') << setw(2) << ltm->tm_mday << "-"
+       << setfill('0') << setw(2) << ltm->tm_mon + 1 << "-"
+       << 1900 + ltm->tm_year;
+    return ss.str();
+}
+
+/**
+ * Gets the current day using the system's local time.
+ */
+int getCurrentSystemDay() {
+    time_t now = time(0);           // Get the current time
+    tm *ltm = localtime(&now);      // Convert to local time
+    return ltm->tm_mday - 1;        // Return the day (adjusted to zero-based index)
+}
+
+/**
+ * Checks if the month has changed and updates the current month.
+ */
+void checkMonthAndUpdate() {
+    int currentMonth = getCurrentSystemMonth();
+    if (currentMonth != currentSystemMonth) {
+        currentSystemMonth = currentMonth;
+        cout << "It's a new month: " << getCurrentDate() << ". Moving to the next month in budget tracking.\n";
+        expense_count++;
+        if (expense_count >= MAX_ENTRIES)//max months is 12??
+        {
+            cout << "Maximum number of months reached. Cannot track further expenses.\n";
+        }
+    }
+}
+
+/**
+ * Displays the main menu.
+ */
+void displayMenu() {
+    string currentDate = getCurrentDate();
+    cout << "\n------------------------- Personal Budget Manager -------------------------\n";
+    cout << "Current Date: " << currentDate << endl;
+    cout << "\nChoose an option:\n";
+    cout << "1) Add Income\n";
+    cout << "2) Update Income\n";
+    cout << "3) Add Expense\n";
+    cout << "4) Set Budget\n";
+    cout << "5) View Budget\n";
+    cout << "6) View History\n";
+    cout << "7) Monthly Budget Summary\n";
+    cout << "8) Export Report\n";
+    cout << "9) Add New Category\n";
+    cout << "10) Compare Months\n";
+    cout << "11) View Daily Spending Trends\n"; // New option for daily trends
+    cout << "12) Logout\n";
+    cout << "13) Exit\n";
+    cout << "Enter your choice: ";
+}
+
+/**
+ * Saves data to a user-specific file.
+ */
+void saveToFile() {
+    string dataFilename = currentUsername + "_budget_data.txt";
+    ofstream file(dataFilename);
+    if (file.is_open()) {
+        // Save categoryNamesPointer
+        file << "Category Names Pointer: " << categoryNamesPointer << endl;
+        
+        // Save category names
+        file << "Category Names:\n";
+        for (int i = 0; i < categoryNamesPointer; i++) {
+            file << categoryNames[i] << endl;
+        }
+
+        // Save income
+        file << "Income: " << income << endl;
+
+        // Save expenses
+        file << "Expenses:\n";
+        for (int i = 0; i <= expense_count; i++) {
+            for (int j = 0; j < categoryNamesPointer; j++) {
+                if (expenses[i][j] != -1)
+                    file << expenses[i][j] << " ";
+                else
+                    file << "-1 ";
+            }
+            file << endl;
+        }
+
+        // Save budget limits
+        file << "Budget Limits:\n";
+        for (int i = 0; i < categoryNamesPointer; i++) {
+            file << categoryNames[i] << ": " << budgetLimits[i] << endl;
+        }
+
+        // Save daily expenses
+        file << "Daily Expenses:\n";
+        for (int day = 0; day < MAX_DAYS; day++) {
+            for (int cat = 0; cat < categoryNamesPointer; cat++) {
+                file << dailyExpenses[day][cat] << " ";
+            }
+            file << endl;
+        }
+
+        file.close();
+    } else {
+        cout << "Error opening file for saving data!\n";
+    }
+}
+
+
+/**
+ * Allows the user to dynamically add a new category.
+ */
+void addCategory() {
+    if (categoryNamesPointer >= MAX_CATEGORIES) {
+        cout << "You have reached the maximum number of categories (" << MAX_CATEGORIES << "). Cannot add more categories.\n";
+        return;
+    }
+
+    string newCategory;
+    cout << "Enter the name of the new category: ";
+    cin.ignore(); // To clear any leftover input
+    getline(cin, newCategory);
+
+    // Check if the category already exists
+    for (int i = 0; i < categoryNamesPointer; i++) {
+        if (categoryNames[i] == newCategory) {
+            cout << "The category \"" << newCategory << "\" already exists. Please try a different name.\n";
+            return;
+        }
+    }
+
+    // Add the new category
+    categoryNames[categoryNamesPointer] = newCategory;
+    budgetLimits[categoryNamesPointer] = 0; // Initialize the budget limit to 0 for the new category
+    categoryNamesPointer++;
+
+    saveHistory("New category added: " + newCategory);
+    saveToFile();
+    cout << "Category \"" << newCategory << "\" added successfully.\n";
+}
+
+/**
+ * Saves a log entry to the user-specific history file.
+ */
+void saveHistory(const string &log) {
+    history.push_back(log);
+    string historyFilename = currentUsername + "_budget_history.txt";
+    ofstream historyFile(historyFilename, ios::app);
+    if (historyFile.is_open()) {
+        historyFile << log << endl;
+        historyFile.close();
+    } else {
+        cout << "Error opening file for saving history!\n";
+    }
+}
+
+/**
+ * Initializes the expenses array.
+ */
+void initializeArray() {
+    for (int x = 0; x < MAX_ENTRIES; x++)
+        for (int y = 0; y < MAX_CATEGORIES; y++) {
+            expenses[x][y] = -1;
+        }
+}
+
+/**
+ * Entry point of the program.
+ */
+int main() {
+    loadCredentials();
+    cout << "Welcome to the Personal Budget Manager!\n";
+
+    bool running = true;
+
+    while (running) {
+        bool loggedIn = false;
+
+        // Login or Register Loop
+        while (!loggedIn) {
+            cout << "1) Login\n2) Register\nEnter your choice: ";
+            int choice;
+            cin >> choice;
+            if (choice == 1) {
+                loggedIn = login();
+            } else if (choice == 2) {
+                registerUser();
+            } else {
+                cout << "Invalid choice. Please try again.\n";
+            }
+        }
+
+        // Initialize current month and day
+        currentSystemMonth = getCurrentSystemMonth();
+        currentDay = getCurrentSystemDay();
+
+        // Main Menu Loop
+        while (loggedIn) {
+            checkMonthAndUpdate();
+            displayMenu();
+            int choice;
+            cin >> choice;
+
+            switch (choice) {
+                case 1:
+                    addIncome();
+                    break;
+                case 2:
+                    updateIncome();
+                    break;
+                case 3:
+                    addExpenses();
+                    break;
+                case 4:
+                    setBudget();
+                    break;
+                case 5:
+                    viewBudget();
+                    break;
+                case 6:
+                    viewHistory();
+                    break;
+                case 7:
+                    monthlyBudgetSummary();
+                    break;
+                case 8:
+                    exportReport();
+                    break;
+                case 9:
+                    addCategory();
+                    break;
+                case 10:
+                    compareMonths();
+                    break;
+                case 11:
+                    showDailyTrends(); // New option for daily trends
+                    break;
+                case 12: // Logout
+                    cout << "You have been logged out.\n";
+                    loggedIn = false; // Breaks out of the main menu loop
+                    break;
+                case 13: // Exit
+                    cout << "Exiting system...\n";
+                    running = false; // Exits the entire application
+                    loggedIn = false; // Ensures logout before exit
+                    break;
+                default:
+                    cout << "Invalid choice! Please try again.\n";
+            }
+        }
+    }
+
+    return 0;
+}
